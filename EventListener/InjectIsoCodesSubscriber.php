@@ -247,22 +247,29 @@ class InjectIsoCodesSubscriber implements EventSubscriberInterface
         'ZW' => 'Zimbabwe',
     ];
 
-    public static function toIsoCountry($mauticCountry): string
-    {
-        $isoTemp = array_search(
-            strtolower($mauticCountry), 
-            array_map(
-                'strtolower', 
-                self::COUNTRIES
-            )
-        );
+    public static function toIsoCountry($mauticCountry): ?string
 
-        if (!$isoTemp) {
-            return '';
+        {
+            if (!$mauticCountry) {
+                return '';
+            }
+            $isoTemp = array_search(
+                // isset($mauticCountry), 
+                strtolower($mauticCountry), 
+                array_map(
+                    // 'isset', 
+                    'strtolower', 
+                    self::COUNTRIES
+                )
+            );
+    
+            if (!$isoTemp) {
+                return '';
+            }
+    
+            return $isoTemp;
         }
-
-        return $isoTemp;
-    }
+ 
 
     /**
      * To Mautic Country
@@ -270,13 +277,21 @@ class InjectIsoCodesSubscriber implements EventSubscriberInterface
      * @param  string $isoCode Country code using ISO standard
      * @return ?string
      */
-    public static function toMauticCountry(string $isoCode): ?string
+    public static function toMauticCountry($isoCode): ?string
     {
-        if (!isset(self::COUNTRIES[$iso])) {
-            return null;
+        if (!$isoCode) {
+            return '';
         }
 
-        return self::COUNTRIES[$iso];
+        // Ensure the ISO code is uppercase for comparison
+        $isoCode = strtoupper($isoCode);
+
+        // Check for ISO code and return country name, blank if not found
+        if (!array_key_exists($isoCode, self::COUNTRIES)) {
+            return '';
+        }
+    
+        return self::COUNTRIES[$isoCode];
     }
 
     public function __construct()
@@ -293,9 +308,22 @@ class InjectIsoCodesSubscriber implements EventSubscriberInterface
     public function injectIsoCountry(LeadEvent $leadEvent): void
     {
         $lead = $leadEvent->getLead();
-        
-        $iso  = self::toIsoCountry($lead->getCountry());
-        $lead->addUpdatedField(CustomContactFields::ISO_CODE_COUNTRY, $iso);
+
+        // Check for existing values
+        $currentIsoCode = $lead->getFieldValue(CustomContactFields::ISO_CODE_COUNTRY);
+        $currentCountry = $lead->getCountry();
+
+        $countryFromIso = self::toMauticCountry($currentIsoCode); // converts value in custom field "Country Code" to country name
+        $isoCodeFromCountry = self::toIsoCountry($currentCountry); // converts value in "Country" dropdown list to country ISO code
+
+        // Determine if the ISO code or country name should be prioritized
+        if (empty($currentIsoCode) && !empty($currentCountry)) {
+            // If ISO code is blank, set it based on the current country
+            $lead->addUpdatedField(CustomContactFields::ISO_CODE_COUNTRY, $isoCodeFromCountry);
+        } else {
+            // All other situations we set country bosed on ISO.       
+            $lead->addUpdatedField('country', $countryFromIso);            
+        } 
 
         $leadEvent->setLead($lead);
     }
